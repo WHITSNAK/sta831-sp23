@@ -23,8 +23,11 @@ class HMM1(AR1):
         else:
             return None
     
-    def simulate(self, x0, length:int) -> pd.Series:
+    def simulate(self, x0, length:int) -> pd.DataFrame:
         """Simulate a HMM(1) with the latent process as AR(1)"""
         xs = super().simulate(x0=x0, length=length)
         errors = np.random.normal(loc=0, scale=np.sqrt(self.w_var), size=length)
-        return xs + errors
+
+        df = pd.DataFrame([xs.values, xs+errors]).T
+        df.columns = ['xs', 'ys']
+        return df
