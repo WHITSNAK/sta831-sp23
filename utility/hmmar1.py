@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 import numpy as np
+from numpy.random import normal
+from collections import deque
 from typing import NamedTuple, List
 
 
@@ -45,19 +47,24 @@ class HMMAR1:
 
     def sample_trace(self, theta: Parameter) -> pd.Series:
         """Sample the entire latent trace based on the current state"""
-        x = np.random.normal(self.states[-1].mean, scale=np.sqrt(self.states[-1].var))
+        size = len(self.states)
+        normal_samples = deque(normal(loc=0, scale=1, size=size))
 
-        x_spl = []
-        for state in self.states[::-1][1:]:
+        # process the last one first for a starting point
+        x = self.states[-1].mean + np.sqrt(self.states[-1].var) * normal_samples.pop()
+
+        trace = deque()
+        for i in range(len(self.states)-2, 0, -1): # working backward starting at the second last
+            state = self.states[i]
             state_post = self.get_backward_posterior(state, x, theta)
-            x = np.random.normal(state_post.mean, scale=np.sqrt(state_post.var))
-            x_spl.append(x)
+            standard_normal = normal_samples.pop()
+            x = state_post.mean + np.sqrt(state_post.var) * standard_normal
+            trace.appendleft(x)
 
-        x_spl = pd.Series(reversed(x_spl))
-        return x_spl
+        return pd.Series(trace)
     
     def get_backward_posterior(self, xt: GaussianLatentState, last_x, theta: Parameter) -> GaussianLatentState:
-        """Calculate the backward posterior p(x[t]|x[t+1], y[1:y]) based off the AR(1) markov property"""
+        """Calculate the backward posterior p(x[t]|x[t+1], y[1:t]) based off the markov property"""
         phi, v = theta.phi, theta.v
 
         ht = phi**2 * xt.var + v
