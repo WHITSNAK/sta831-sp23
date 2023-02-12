@@ -21,13 +21,10 @@ class HMMAR1:
         def s(self):
             return self.v / (1 - self.phi**2)
 
-    def __init__(self, x0_mean, x0_var):
-        self.x0_mean = x0_mean
-        self.x0_var = x0_var
-
-        self.xt = HMMAR1.GaussianLatentState(x0_mean, x0_var)
-        self.states: List[HMMAR1.GaussianLatentState] = []
-        self.states.append(self.xt)
+    def __init__(self, init_state: GaussianLatentState):
+        self.x0 = init_state
+        self.xt = init_state
+        self.states: List[HMMAR1.GaussianLatentState] = [init_state]
 
     def filter(self, new_y: float, theta: Parameter) -> GaussianLatentState:
         """Gaussian Forward Filter"""
@@ -56,14 +53,14 @@ class HMMAR1:
         trace = deque()
         for i in range(len(self.states)-2, 0, -1): # working backward starting at the second last
             state = self.states[i]
-            state_post = self.get_backward_posterior(state, x, theta)
+            state_post = self._get_backward_posterior(state, x, theta)
             standard_normal = normal_samples.pop()
             x = state_post.mean + np.sqrt(state_post.var) * standard_normal
             trace.appendleft(x)
 
         return pd.Series(trace)
     
-    def get_backward_posterior(self, xt: GaussianLatentState, last_x, theta: Parameter) -> GaussianLatentState:
+    def _get_backward_posterior(self, xt: GaussianLatentState, last_x, theta: Parameter) -> GaussianLatentState:
         """Calculate the backward posterior p(x[t]|x[t+1], y[1:t]) based off the markov property"""
         phi, v = theta.phi, theta.v
 
