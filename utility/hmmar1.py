@@ -14,9 +14,20 @@ class HMMAR1:
         var: float
 
     class Parameter(NamedTuple):
+        """
+        parameters:
+        -----------
+        phi: The first-order AR(1) coefficient
+        v: The latent process 1-step conditional variances
+        wt: The observation conditional variances at time t
+        bt: the observation conditional bias at time t
+        mu: the observation conditional constant shift at time t
+        """
         phi: float
         v: float
-        w: float
+        wt: float
+        bt: float = 0
+        mu: float = 0
 
         def s(self):
             return self.v / (1 - self.phi**2)
@@ -28,14 +39,14 @@ class HMMAR1:
 
     def filter(self, new_y: float, theta: Parameter) -> LatentState:
         """Gaussian Forward Filter"""
-        phi, v, w = theta.phi, theta.v, theta.w
+        phi, v, wt, bt, mu = theta
 
-        at = phi * self.xt.mean
+        a = phi * self.xt.mean
         ht = phi**2 * self.xt.var + v
-        At = ht / (ht + w)
+        At = ht / (ht + wt)
         
-        new_mean = at + At * (new_y - at)
-        new_var = w * At
+        new_mean = a + At * (new_y - (a+bt+mu))
+        new_var = wt * At
 
         new_state = HMMAR1.LatentState(mean=new_mean, var=new_var)
         self.xt = new_state
