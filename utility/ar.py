@@ -24,13 +24,14 @@ class AR:
 
         # construct design matrix
         y = data[lags:]
-        X = self._get_design_matrix(data.values)
+        X = self._get_design_matrix(data)
 
         # sufficient statistics
         B = X.T @ X
         b = np.linalg.inv(B) @ X.T @ y
 
         self.data_ = data
+        self.y_ = y
         self.design_matrix_ = X
         self.B_ = B
         self.coeff_ = b
@@ -50,7 +51,7 @@ class AR:
     
     def sample_coeff(self, var_post:np.array) -> np.array:
         """
-        Sample the conditional posterior beta given innovation variance
+        Sample the conditional posterior ɸs given innovation variance
 
         parameters
         ----------
@@ -102,28 +103,54 @@ class AR:
         X = hankel(data[:n-lags], data[-(lags+1):-1])
         return X
     
-    def logp(self, b_samples: np.array, v_samples: np.array) -> np.array:
+    def log_likelihood(self, b_samples: np.array, v_samples: np.array) -> np.array:
         """
-        The unnormalized log probability of all posterior samples
+        The unnormalized log likelihood of all posterior samples
+        based on the two likelihood
+        - full likelihood p(x[0:n]|θ) = p(θ) under stationarity
+        - the conditional likelihood of p(x[1:n]|θ, x[0]) = g(θ)
 
         parameters:
         -----------
-        b_samples: posterior samples of ϕ[p] with shape [m, p]. m for MC sample size.
+        b_samples: posterior samples of ɸ[p] with shape [m, p]. m for MC sample size.
         v_samples: posterior samples of v with shape [m, 1]. m for MC sample size.
 
         return:
         -------
-        log probability array with shape (m, )
+        log probability array with shape (m, 3)
+        - m: MC sample size
+        - 3 colimns: p(θ), g(θ), normalized w(θ)
         """
+        y = self.y_
         X = self.design_matrix_
         x0 = self.data_[0]
         n = X.shape[0]
 
         logps = []
         for phi, v in zip(b_samples, v_samples):
-            e = X - phi * X
-            Q = (1-phi**2)*x0**2 + e.T@e
-            logp = np.log(1-phi**2)/2 - (n/2)*np.log(v) - Q.flatten()[0]/(2*v)
-            logps.append(logp.flatten()[0])
+            e = y - X@phi
 
-        return np.array(logps)
+            # conditional likelihood
+            Qg = e @ e
+            logg = -(n/2)*np.log(v) - Qg/(2*v)
+
+            # full likelihood
+            a = 1 - phi**2
+            Qp = a*x0**2 + Qg
+            logp = np.log(a)/2 - ((n+1)/2)*np.log(v) - Qp/(2*v)
+
+            # importance weight
+            logp = logp.flatten()[0]
+            logg= logg.flatten()[0]
+            w = logp - logg
+
+            logps.append((logp, logg, w))
+
+        # normalize importance weights
+        logps = np.array(logps)
+        ws = logps[:, 2]
+        ws = np.exp(ws - np.nanmax(ws))  # to avoid numerical overflow
+        ws /= np.nansum(ws)
+        logps[:, 2] = ws
+
+        return logps
