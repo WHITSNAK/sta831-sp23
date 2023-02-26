@@ -12,7 +12,7 @@ class HMMAR1:
     class LatentState(NamedTuple):
         mean: float
         var: float
-
+    
     class Parameter(NamedTuple):
         """
         parameters:
@@ -61,7 +61,7 @@ class HMMAR1:
         # process the last one first for a starting point
         x = self.states[-1].mean + np.sqrt(self.states[-1].var) * normal_samples.pop()
 
-        trace = deque()
+        trace = deque((x, ))
         for i in range(len(self.states)-1, 0, -1): # working backward starting at the second last
             state = self.states[i-1]
             state_post = self._get_backward_posterior(state, x, theta)
