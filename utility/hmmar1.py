@@ -30,10 +30,11 @@ class HMMAR1:
         def s(self):
             return self.v / (1 - self.phi**2)
 
-    def __init__(self, init_state: LatentState):
+    def __init__(self, init_state: LatentState, seed=None):
         self.x0 = init_state
         self.xt = init_state
         self.states: List[HMMAR1.LatentState] = [init_state]
+        self.rng = np.random.default_rng(seed)
 
     def filter(self, new_y: float, theta: Parameter) -> LatentState:
         """Gaussian Forward Filter"""
@@ -61,7 +62,7 @@ class HMMAR1:
     def sample_trace(self, n_traces: int, theta: Parameter) -> np.array:
         """Sample the entire latent trace based on the current state using FFBS"""
         size = len(self.states)
-        normal_samples = deque(np.random.standard_normal(size=(size, n_traces)))
+        normal_samples = deque(self.rng.standard_normal(size=(size, n_traces)))
 
         # process the last one first for a starting point
         x = self.states[-1].mean + np.sqrt(self.states[-1].var) * normal_samples.pop()

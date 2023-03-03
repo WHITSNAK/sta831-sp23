@@ -37,7 +37,7 @@ class HMMAR1GibbsSampler:
     def sample_prior(self, size=None) -> HMMAR1.Parameter:
         priors = self.priors
         μ = priors.mu0 + self.rng.standard_normal(size=size) * np.sqrt(priors.mu_var)
-        𝛷 = self._draw_truncnorm(loc=priors.phi0, scale=np.sqrt(priors.phi_var), a=-1, b=1, size=size)
+        𝛷 = self._draw_truncnorm(loc=priors.phi0, scale=np.sqrt(priors.phi_var), bound=priors.phi_bound, size=size)
         inv_w = self.rng.gamma(shape=priors.w_ddof/2, scale=2/(priors.w_ddof*priors.w0), size=size)
         inv_v = self.rng.gamma(shape=priors.v_ddof/2, scale=2/(priors.v_ddof*priors.v0), size=size)
 
@@ -100,7 +100,7 @@ class HMMAR1GibbsSampler:
         precision = 1/phi_var + inv_v * sq0
         mean = (phi0/phi_var + inv_v*sq1) / precision
 
-        return self._draw_truncnorm(loc=mean, scale=np.sqrt(1/precision), a=phi_bound[0], b=phi_bound[1])
+        return self._draw_truncnorm(loc=mean, scale=np.sqrt(1/precision), bound=phi_bound)
 
     def step_inv_v(self, xs, phi):
         n = xs.shape[0] - 1
@@ -113,18 +113,19 @@ class HMMAR1GibbsSampler:
         return self.rng.gamma(shape=ddof, scale=vn)
 
     def step_xs(self, x0, para: HMMAR1.Parameter):
-        return HMMAR1(x0).filter_all(self.ys, para).sample_trace(1, para).ravel()
+        return HMMAR1(x0, self.rng).filter_all(self.ys, para).sample_trace(1, para).ravel()
 
-    def _draw_truncnorm(self, loc, scale, a, b, size=None):
+    def _draw_truncnorm(self, loc, scale, bound, size=None):
         """
         parameters:
         -----------
         loc: The mean of the normal
         scale: The standard deviation of the normal
-        a, b: the left and right bound of the actual values
+        bound: the left and right bound of the actual values, (a, b]
         size: the size of array
         """
         n = 1 if size is None else size
+        a, b = bound
         zs = []
 
         while True:
