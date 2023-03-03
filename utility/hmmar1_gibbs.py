@@ -49,11 +49,12 @@ class HMMAR1GibbsSampler:
             n_samples: int = 1000, burnin: int = 0,
             theta: HMMAR1.Parameter = None
         ) -> List[Sample]:
+        
         ys = self.ys
         para = self.sample_prior() if theta is None else theta
         𝛷, v, w, _, μ = para
         inv_v, inv_w = 1/v, 1/w
-        xs = HMMAR1(x0).filter_all(ys, para).sample_trace(1, para).ravel()
+        xs = HMMAR1(x0, self.rng).filter_all(ys, para).sample_trace(1, para).ravel()
 
         # gibbs sampler
         for i in range(n_samples + burnin):

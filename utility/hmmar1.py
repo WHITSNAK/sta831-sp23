@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 from collections import deque
 from typing import NamedTuple, List
+from numba import njit
 
 
 class HMMAR1:
@@ -38,16 +39,7 @@ class HMMAR1:
 
     def filter(self, new_y: float, theta: Parameter) -> LatentState:
         """Gaussian Forward Filter"""
-        phi, v, wt, bt, mu = theta
-
-        a = phi * self.xt.mean
-        ht = phi**2 * self.xt.var + v
-        At = ht / (ht + wt)
-        
-        new_mean = a + At * (new_y - (a+bt+mu))
-        new_var = wt * At
-
-        new_state = HMMAR1.LatentState(mean=new_mean, var=new_var)
+        new_state = HMMAR1.LatentState(*filter(new_y, *self.xt, *theta))
         self.xt = new_state
         self.states.append(new_state)
         return new_state
@@ -62,29 +54,41 @@ class HMMAR1:
     def sample_trace(self, n_traces: int, theta: Parameter) -> np.array:
         """Sample the entire latent trace based on the current state using FFBS"""
         size = len(self.states)
-        normal_samples = deque(self.rng.standard_normal(size=(size, n_traces)))
+        zs = deque(self.rng.standard_normal(size=(size, n_traces)))
+        phi, v = theta.phi, theta.v
 
         # process the last one first for a starting point
-        x = self.states[-1].mean + np.sqrt(self.states[-1].var) * normal_samples.pop()
+        x = self.states[-1].mean + np.sqrt(self.states[-1].var) * zs.pop()
 
         trace = deque((x, ))
         for i in range(len(self.states)-1, 0, -1): # working backward starting at the second last
             state = self.states[i-1]
-            state_post = self._get_backward_posterior(state, x, theta)
-            z = normal_samples.pop()
-            x = state_post.mean + np.sqrt(state_post.var) * z
+            mean, var = backward_posterior(x, *state, phi, v)
+            x = mean + np.sqrt(var) * zs.pop()
             trace.appendleft(x)
 
         return np.array(trace)
+
+
+@njit
+def filter(yt, mt, Mt, phi, v, wt, bt, mu):
+    """Gaussian Forward Filter"""
+    a = phi * mt
+    ht = phi**2 * Mt + v
+    At = ht / (ht + wt)
     
-    def _get_backward_posterior(self, xt: LatentState, last_x, theta: Parameter) -> LatentState:
-        """Calculate the backward posterior p(x[t]|x[t+1], y[1:t]) based off the markov property"""
-        phi, v = theta.phi, theta.v
+    new_mean = a + At * (yt - (a+bt+mu))
+    new_var = wt * At
 
-        ht = phi**2 * xt.var + v
-        At = xt.var / ht
+    return (new_mean, new_var)
 
-        new_mean = xt.mean + phi*At * (last_x - phi*xt.mean)
-        new_var = v * At
+@njit
+def backward_posterior(xt, mt, Mt, phi, v):
+    """Calculate the backward posterior p(x[t]|x[t+1], y[1:t]) based off the markov property"""
+    ht = phi**2 * Mt + v
+    At = Mt / ht
 
-        return HMMAR1.LatentState(mean=new_mean, var=new_var)
+    new_mean = mt + phi*At * (xt - phi*mt)
+    new_var = v * At
+
+    return (new_mean, new_var)
